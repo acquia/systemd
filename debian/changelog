@@ -1,3 +1,133 @@
+systemd (229-4ubuntu21.27) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: incorrect PIDFile verification
+    - debian/patches/CVE-2018-16888.patch: be stricter when handling PID
+      files and MAINPID sd_notify() messages in man/systemd.service.xml,
+      src/core/manager.c, src/core/service.c, src/core/unit.h,
+      test/TEST-20-MAINPIDGAMES/Makefile,
+      test/TEST-20-MAINPIDGAMES/test.sh,
+      test/TEST-20-MAINPIDGAMES/testsuite.sh, test/test-functions.
+    - debian/patches/CVE-2018-16888-2.patch: relax PID file symlink chain
+      checks a bit in src/core/service.c.
+    - CVE-2018-16888
+  * SECURITY UPDATE: memory leak in button_open
+    - debian/patches/CVE-2019-20386.patch: fix event in
+      src/login/logind-button.c.
+    - CVE-2019-20386
+  * SECURITY UPDATE: heap use-after-free with async polkit queries
+    - debian/patches/CVE-2020-1712-1.patch: on async pk requests,
+      re-validate action/details in src/shared/bus-util.c.
+    - debian/patches/CVE-2020-1712-2.patch: introduce API for re-enqueuing
+      incoming messages in src/libsystemd/libsystemd.sym,
+      src/libsystemd/sd-bus/sd-bus.c, src/systemd/sd-bus.h.
+    - debian/patches/CVE-2020-1712-3.patch: when authorizing via PK
+      re-resolve callback/userdata instead of caching it in
+      src/shared/bus-util.c.
+    - debian/patches/CVE-2020-1712-4.patch: fix typo in function name in
+      src/libsystemd/libsystemd.sym, src/libsystemd/sd-bus/sd-bus.c,
+      src/systemd/sd-bus.h, src/shared/bus-util.c.
+    - debian/libsystemd0.symbols: added new symbols.
+    - CVE-2020-1712
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 04 Feb 2020 20:07:56 -0500
+
+systemd (229-4ubuntu21.23) xenial; urgency=medium
+
+  * d/p/core-use-an-AF_UNIX-SOCK_DGRAM-socket-for-cgroup-age.patch:
+    - prevent logind from leaking session files (LP: #1846787)
+
+ -- Heitor Alves de Siqueira <halves@canonical.com>  Mon, 07 Oct 2019 07:44:13 -0300
+
+systemd (229-4ubuntu21.22) xenial; urgency=medium
+
+  [ Dan Streetman ]
+  * d/t/systemd-fsckd, d/t/cmdline-upstart-boot:
+    - skip on s390x; requires grub (LP: #1830477)
+  * d/p/ask-password-prevent-buffer-overrow-when-reading-fro.patch:
+    - prevent buffer overflow when reading keyring (LP: #1814373)
+
+  [ Dimitri John Ledkov ]
+  * Specify Ubuntu's Vcs-Git
+
+  [ Balint Reczey ]
+  * Append /snap/bin to default PATH.
+    Snapd ships snapd-env-generator, but systemd does not not support
+    environment generators. Hard-coding /snap/bin is less risky than
+    backporting environment generator support and since snaps are considered
+    to be first class packages on Ubuntu /snap/bin can safely added to
+    the default PATH. (LP: #1771858)
+
+  [ Ioanna Alifieraki ]
+  * d/p/systemctl-Replace-check_one_unit-by-get_state_one_un.patch
+    - Backport upstream PR#2768 needed for next patch
+  * d/p/systemctl-load-unit-if-needed-in-systemctl-is-active.patch
+    - Backport upstream PR#7997 to fix alias service reports inactive while
+      aliased is active (LP: #1828892)
+
+ -- Dan Streetman <ddstreet@canonical.com>  Wed, 24 Apr 2019 17:15:36 -0400
+
+systemd (229-4ubuntu21.21) xenial-security; urgency=medium
+
+  * SECURITY UDPATE: Unsafe environment usage in pam_systemd.so leads to
+    incorrect Policykit authorization
+    - debian/patches/CVE-2019-3842.patch: Use secure_getenv() rather than
+      getenv() in pam_systemd.c
+    - CVE-2019-3842
+
+ -- Chris Coulson <chris.coulson@canonical.com>  Fri, 29 Mar 2019 16:43:00 +0000
+
+systemd (229-4ubuntu21.19) xenial; urgency=medium
+
+  [ Michael Vogt ]
+  * d/p/fix-race-daemon-reload-11121.patch:
+    - backport systemd upstream PR#8803 and PR#11121 to fix race
+      when doing systemctl and systemctl daemon-reload at the
+      same time LP: #1819728
+
+  [ Balint Reczey ]
+  * d/p/virt-detect-WSL-environment-as-a-container.patch:
+    - virt: detect WSL environment as a container (LP: #1816753)
+
+ -- Michael Vogt <michael.vogt@ubuntu.com>  Mon, 25 Mar 2019 16:04:56 +0100
+
+systemd (229-4ubuntu21.18) xenial; urgency=medium
+
+  * d/p/fix-race-daemon-reload-8803.patch:
+    - backport systemd upstream PR#8803 to fix race when doing
+      systemctl and systemctl daemon-reload at the same time
+      LP: #1819728
+
+ -- Michael Vogt <michael.vogt@ubuntu.com>  Wed, 13 Mar 2019 16:17:45 +0100
+
+systemd (229-4ubuntu21.17) xenial; urgency=medium
+
+  [ Victor Tapia ]
+  * d/p/stop-mount-error-propagation.patch:
+    keep mount errors local to the failing mount point instead of blocking
+    the processing of all mounts (LP: #1755863)
+
+  [ Eric Desrochers ]
+  * d/p/fix-egde-case-when-processing-proc-self-mountinfo.patch:
+    Mounting any file system to a mount point in a directory
+    that is bind mounted to itself will create an inactive
+    mount unit. (LP: #1795764)
+
+ -- Dan Streetman <ddstreet@canonical.com>  Thu, 28 Feb 2019 17:50:50 -0500
+
+systemd (229-4ubuntu21.16) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: denial of service via crafted dbus message
+    - debian/patches/CVE-2019-6454.patch: sd-bus: enforce a size limit for
+      dbus paths, and don't allocate them on the stack
+    - debian/patches/sd-bus-if-we-receive-an-invalid-dbus-message-ignore-.patch:
+      sd-bus: if we receive an invalid dbus message, ignore and proceeed
+    - CVE-2019-6454
+
+  * Do not remove multiple spaces after identifier in syslog message
+    - add debian/patches/journal-do-not-remove-multiple-spaces-after-identifi.patch
+
+ -- Chris Coulson <chris.coulson@canonical.com>  Wed, 13 Feb 2019 22:03:22 +0000
+
 systemd (229-4ubuntu21.15) xenial-security; urgency=medium
 
   * SECURITY UPDATE: memory corruption in journald via attacker controlled alloca
