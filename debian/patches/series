@@ -74,7 +74,6 @@ Fix-journald-rate-limit-with-low-disk-space.patch
 acquia-0001-dont-dispatch-load-queue-when-setting-slice-for-transient-unit.patch
 acquia-0002-run-make-slice-work-in-conjunction-with-scope.patch
 acquia-0003-nspawn-decrease-mkdir-error-logging.patch
-acquia-0004-cgroup-empty-messages.patch
 
 ## Debian specific patches
 Add-back-support-for-Debian-specific-config-files.patch
