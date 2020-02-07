@@ -1,4 +1,4 @@
-systemd (229-4ubuntu21.21-acquia1) xenial; urgency=medium
+systemd (229-4ubuntu21.27-acquia1) xenial; urgency=medium
 
   * ensure empty cgroup messages are not lost
     (https://github.com/systemd/systemd/issues/1961)
@@ -9,7 +9,75 @@ systemd (229-4ubuntu21.21-acquia1) xenial; urgency=medium
   * nspawn: decrease mkdir error logging in /sys to debug priority
     (https://github.com/systemd/systemd/pull/3748)
 
- -- Glenn Pratt <glenn.pratt@acquia.com>  Fri, 14 Jul 2017 11:09:48 -0800
+ -- William Hopper <william.hopper@acquia.com>  Thu, 6 Feb 2020 12:53:07 -0800
+
+systemd (229-4ubuntu21.27) xenial-security; urgency=medium
+
+  * SECURITY UPDATE: incorrect PIDFile verification
+    - debian/patches/CVE-2018-16888.patch: be stricter when handling PID
+      files and MAINPID sd_notify() messages in man/systemd.service.xml,
+      src/core/manager.c, src/core/service.c, src/core/unit.h,
+      test/TEST-20-MAINPIDGAMES/Makefile,
+      test/TEST-20-MAINPIDGAMES/test.sh,
+      test/TEST-20-MAINPIDGAMES/testsuite.sh, test/test-functions.
+    - debian/patches/CVE-2018-16888-2.patch: relax PID file symlink chain
+      checks a bit in src/core/service.c.
+    - CVE-2018-16888
+  * SECURITY UPDATE: memory leak in button_open
+    - debian/patches/CVE-2019-20386.patch: fix event in
+      src/login/logind-button.c.
+    - CVE-2019-20386
+  * SECURITY UPDATE: heap use-after-free with async polkit queries
+    - debian/patches/CVE-2020-1712-1.patch: on async pk requests,
+      re-validate action/details in src/shared/bus-util.c.
+    - debian/patches/CVE-2020-1712-2.patch: introduce API for re-enqueuing
+      incoming messages in src/libsystemd/libsystemd.sym,
+      src/libsystemd/sd-bus/sd-bus.c, src/systemd/sd-bus.h.
+    - debian/patches/CVE-2020-1712-3.patch: when authorizing via PK
+      re-resolve callback/userdata instead of caching it in
+      src/shared/bus-util.c.
+    - debian/patches/CVE-2020-1712-4.patch: fix typo in function name in
+      src/libsystemd/libsystemd.sym, src/libsystemd/sd-bus/sd-bus.c,
+      src/systemd/sd-bus.h, src/shared/bus-util.c.
+    - debian/libsystemd0.symbols: added new symbols.
+    - CVE-2020-1712
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 04 Feb 2020 20:07:56 -0500
+
+systemd (229-4ubuntu21.23) xenial; urgency=medium
+
+  * d/p/core-use-an-AF_UNIX-SOCK_DGRAM-socket-for-cgroup-age.patch:
+    - prevent logind from leaking session files (LP: #1846787)
+
+ -- Heitor Alves de Siqueira <halves@canonical.com>  Mon, 07 Oct 2019 07:44:13 -0300
+
+systemd (229-4ubuntu21.22) xenial; urgency=medium
+
+  [ Dan Streetman ]
+  * d/t/systemd-fsckd, d/t/cmdline-upstart-boot:
+    - skip on s390x; requires grub (LP: #1830477)
+  * d/p/ask-password-prevent-buffer-overrow-when-reading-fro.patch:
+    - prevent buffer overflow when reading keyring (LP: #1814373)
+
+  [ Dimitri John Ledkov ]
+  * Specify Ubuntu's Vcs-Git
+
+  [ Balint Reczey ]
+  * Append /snap/bin to default PATH.
+    Snapd ships snapd-env-generator, but systemd does not not support
+    environment generators. Hard-coding /snap/bin is less risky than
+    backporting environment generator support and since snaps are considered
+    to be first class packages on Ubuntu /snap/bin can safely added to
+    the default PATH. (LP: #1771858)
+
+  [ Ioanna Alifieraki ]
+  * d/p/systemctl-Replace-check_one_unit-by-get_state_one_un.patch
+    - Backport upstream PR#2768 needed for next patch
+  * d/p/systemctl-load-unit-if-needed-in-systemctl-is-active.patch
+    - Backport upstream PR#7997 to fix alias service reports inactive while
+      aliased is active (LP: #1828892)
+
+ -- Dan Streetman <ddstreet@canonical.com>  Wed, 24 Apr 2019 17:15:36 -0400
 
 systemd (229-4ubuntu21.21) xenial-security; urgency=medium
 

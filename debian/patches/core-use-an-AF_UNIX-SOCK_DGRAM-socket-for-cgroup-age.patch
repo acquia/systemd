@@ -1,46 +1,56 @@
-commit 7329f8626e1c10d6cedc7eb5ca432f06e55a449c
-Author: Lennart Poettering <lennart@poettering.net>
-Date:   Wed May 4 20:43:23 2016 +0200
+From 225537692f049ad74defc004bad5ee7bce6265df Mon Sep 17 00:00:00 2001
+From: Lennart Poettering <lennart@poettering.net>
+Date: Wed, 4 May 2016 20:43:23 +0200
+Subject: core: use an AF_UNIX/SOCK_DGRAM socket for cgroup agent notification
 
-    core: use an AF_UNIX/SOCK_DGRAM socket for cgroup agent notification
-    
-    dbus-daemon currently uses a backlog of 30 on its D-bus system bus socket. On
-    overloaded systems this means that only 30 connections may be queued without
-    dbus-daemon processing them before further connection attempts fail. Our
-    cgroups-agent binary so far used D-Bus for its messaging, and hitting this
-    limit hence may result in us losing cgroup empty messages.
-    
-    This patch adds a seperate cgroup agent socket of type AF_UNIX/SOCK_DGRAM.
-    Since sockets of these types need no connection set up, no listen() backlog
-    applies. Our cgroup-agent binary will hence simply block as long as it can't
-    enqueue its datagram message, so that we won't lose cgroup empty messages as
-    likely anymore.
-    
-    This also rearranges the ordering of the processing of SIGCHLD signals, service
-    notification messages (sd_notify()...) and the two types of cgroup
-    notifications (inotify for the unified hierarchy support, and agent for the
-    classic hierarchy support). We now always process events for these in the
-    following order:
-    
-      1. service notification messages  (SD_EVENT_PRIORITY_NORMAL-7)
-      2. SIGCHLD signals (SD_EVENT_PRIORITY_NORMAL-6)
-      3. cgroup inotify and cgroup agent (SD_EVENT_PRIORITY_NORMAL-5)
-    
-    This is because when receiving SIGCHLD we invalidate PID information, which we
-    need to process the service notification messages which are bound to PIDs.
-    Hence the order between the first two items. And we want to process SIGCHLD
-    metadata to detect whether a service is gone, before using cgroup
-    notifications, to decide when a service is gone, since the former carries more
-    useful metadata.
-    
-    Related to this:
-    https://bugs.freedesktop.org/show_bug.cgi?id=95264
-    https://github.com/systemd/systemd/issues/1961
+dbus-daemon currently uses a backlog of 30 on its D-bus system bus socket. On
+overloaded systems this means that only 30 connections may be queued without
+dbus-daemon processing them before further connection attempts fail. Our
+cgroups-agent binary so far used D-Bus for its messaging, and hitting this
+limit hence may result in us losing cgroup empty messages.
 
-diff --git a/src/cgroups-agent/cgroups-agent.c b/src/cgroups-agent/cgroups-agent.c
-index aadfba0..333ce11 100644
---- a/src/cgroups-agent/cgroups-agent.c
-+++ b/src/cgroups-agent/cgroups-agent.c
+This patch adds a seperate cgroup agent socket of type AF_UNIX/SOCK_DGRAM.
+Since sockets of these types need no connection set up, no listen() backlog
+applies. Our cgroup-agent binary will hence simply block as long as it can't
+enqueue its datagram message, so that we won't lose cgroup empty messages as
+likely anymore.
+
+This also rearranges the ordering of the processing of SIGCHLD signals, service
+notification messages (sd_notify()...) and the two types of cgroup
+notifications (inotify for the unified hierarchy support, and agent for the
+classic hierarchy support). We now always process events for these in the
+following order:
+
+  1. service notification messages  (SD_EVENT_PRIORITY_NORMAL-7)
+  2. SIGCHLD signals (SD_EVENT_PRIORITY_NORMAL-6)
+  3. cgroup inotify and cgroup agent (SD_EVENT_PRIORITY_NORMAL-5)
+
+This is because when receiving SIGCHLD we invalidate PID information, which we
+need to process the service notification messages which are bound to PIDs.
+Hence the order between the first two items. And we want to process SIGCHLD
+metadata to detect whether a service is gone, before using cgroup
+notifications, to decide when a service is gone, since the former carries more
+useful metadata.
+
+Related to this:
+https://bugs.freedesktop.org/show_bug.cgi?id=95264
+https://github.com/systemd/systemd/issues/1961
+
+Origin: upstream, https://github.com/systemd/systemd/commit/d8fdc62037b5
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1846787
+---
+ src/cgroups-agent/cgroups-agent.c |  48 ++++-----
+ src/core/cgroup.c                 |   6 +-
+ src/core/dbus.c                   |  73 ++++++--------
+ src/core/dbus.h                   |   2 +
+ src/core/manager.c                | 155 ++++++++++++++++++++++++++++--
+ src/core/manager.h                |   3 +
+ 6 files changed, 209 insertions(+), 78 deletions(-)
+
+Index: systemd-229/src/cgroups-agent/cgroups-agent.c
+===================================================================
+--- systemd-229.orig/src/cgroups-agent/cgroups-agent.c
++++ systemd-229/src/cgroups-agent/cgroups-agent.c
 @@ -18,15 +18,22 @@
  ***/
  
@@ -110,10 +120,10 @@ index aadfba0..333ce11 100644
                  return EXIT_FAILURE;
          }
  
-diff --git a/src/core/cgroup.c b/src/core/cgroup.c
-index 85968fd..1f1908d 100644
---- a/src/core/cgroup.c
-+++ b/src/core/cgroup.c
+Index: systemd-229/src/core/cgroup.c
+===================================================================
+--- systemd-229.orig/src/core/cgroup.c
++++ systemd-229/src/core/cgroup.c
 @@ -1312,7 +1312,9 @@ int manager_setup_cgroup(Manager *m) {
                          if (r < 0)
                                  return log_error_errno(r, "Failed to watch control group inotify object: %m");
@@ -125,7 +135,7 @@ index 85968fd..1f1908d 100644
                          if (r < 0)
                                  return log_error_errno(r, "Failed to set priority of inotify event source: %m");
  
-@@ -1458,6 +1460,8 @@ int manager_notify_cgroup_empty(Manager *m, const char *cgroup) {
+@@ -1458,6 +1460,8 @@ int manager_notify_cgroup_empty(Manager
          assert(m);
          assert(cgroup);
  
@@ -134,11 +144,11 @@ index 85968fd..1f1908d 100644
          u = manager_get_unit_by_cgroup(m, cgroup);
          if (!u)
                  return 0;
-diff --git a/src/core/dbus.c b/src/core/dbus.c
-index 4134893..c9e0a29 100644
---- a/src/core/dbus.c
-+++ b/src/core/dbus.c
-@@ -71,28 +71,42 @@ int bus_send_queued_message(Manager *m) {
+Index: systemd-229/src/core/dbus.c
+===================================================================
+--- systemd-229.orig/src/core/dbus.c
++++ systemd-229/src/core/dbus.c
+@@ -71,28 +71,42 @@ int bus_send_queued_message(Manager *m)
          return 0;
  }
  
@@ -194,7 +204,7 @@ index 4134893..c9e0a29 100644
          /* only accept org.freedesktop.systemd1.Agent from UID=0 */
          r = sd_bus_query_sender_creds(message, SD_BUS_CREDS_EUID, &creds);
          if (r < 0)
-@@ -110,16 +124,6 @@ static int signal_agent_released(sd_bus_message *message, void *userdata, sd_bus
+@@ -110,16 +124,6 @@ static int signal_agent_released(sd_bus_
          }
  
          manager_notify_cgroup_empty(m, cgroup);
@@ -211,7 +221,7 @@ index 4134893..c9e0a29 100644
          return 0;
  }
  
-@@ -690,25 +694,6 @@ static int bus_on_connection(sd_event_source *s, int fd, uint32_t revents, void
+@@ -690,25 +694,6 @@ static int bus_on_connection(sd_event_so
                  return 0;
          }
  
@@ -237,7 +247,7 @@ index 4134893..c9e0a29 100644
          r = bus_setup_disconnected_match(m, bus);
          if (r < 0)
                  return 0;
-@@ -906,8 +891,8 @@ static int bus_setup_system(Manager *m, sd_bus *bus) {
+@@ -906,8 +891,8 @@ static int bus_setup_system(Manager *m,
          assert(m);
          assert(bus);
  
@@ -248,20 +258,20 @@ index 4134893..c9e0a29 100644
                  r = sd_bus_add_match(
                                  bus,
                                  NULL,
-diff --git a/src/core/dbus.h b/src/core/dbus.h
-index e16a84f..6baaffb 100644
---- a/src/core/dbus.h
-+++ b/src/core/dbus.h
-@@ -40,3 +40,5 @@ int bus_verify_manage_units_async(Manager *m, sd_bus_message *call, sd_bus_error
+Index: systemd-229/src/core/dbus.h
+===================================================================
+--- systemd-229.orig/src/core/dbus.h
++++ systemd-229/src/core/dbus.h
+@@ -40,3 +40,5 @@ int bus_verify_manage_units_async(Manage
  int bus_verify_manage_unit_files_async(Manager *m, sd_bus_message *call, sd_bus_error *error);
  int bus_verify_reload_daemon_async(Manager *m, sd_bus_message *call, sd_bus_error *error);
  int bus_verify_set_environment_async(Manager *m, sd_bus_message *call, sd_bus_error *error);
 +
 +int bus_forward_agent_released(Manager *m, const char *path);
-diff --git a/src/core/manager.c b/src/core/manager.c
-index b215583..d67ecb6 100644
---- a/src/core/manager.c
-+++ b/src/core/manager.c
+Index: systemd-229/src/core/manager.c
+===================================================================
+--- systemd-229.orig/src/core/manager.c
++++ systemd-229/src/core/manager.c
 @@ -85,6 +85,7 @@
  #include "watchdog.h"
  
@@ -278,7 +288,7 @@ index b215583..d67ecb6 100644
  static int manager_dispatch_signal_fd(sd_event_source *source, int fd, uint32_t revents, void *userdata);
  static int manager_dispatch_time_change_fd(sd_event_source *source, int fd, uint32_t revents, void *userdata);
  static int manager_dispatch_idle_pipe_fd(sd_event_source *source, int fd, uint32_t revents, void *userdata);
-@@ -483,11 +485,11 @@ static int manager_setup_signals(Manager *m) {
+@@ -483,11 +485,11 @@ static int manager_setup_signals(Manager
  
          (void) sd_event_source_set_description(m->signal_event_source, "manager-signal");
  
@@ -295,7 +305,7 @@ index b215583..d67ecb6 100644
          if (r < 0)
                  return r;
  
-@@ -586,12 +588,12 @@ int manager_new(ManagerRunningAs running_as, bool test_run, Manager **_m) {
+@@ -586,12 +588,12 @@ int manager_new(ManagerRunningAs running
  
          m->idle_pipe[0] = m->idle_pipe[1] = m->idle_pipe[2] = m->idle_pipe[3] = -1;
  
@@ -311,7 +321,7 @@ index b215583..d67ecb6 100644
          m->have_ask_password = -EINVAL; /* we don't know */
          m->first_boot = -1;
  
-@@ -732,8 +734,8 @@ static int manager_setup_notify(Manager *m) {
+@@ -732,8 +734,8 @@ static int manager_setup_notify(Manager
                  if (r < 0)
                          return log_error_errno(r, "Failed to allocate notify event source: %m");
  
@@ -322,7 +332,7 @@ index b215583..d67ecb6 100644
                  r = sd_event_source_set_priority(m->notify_event_source, SD_EVENT_PRIORITY_NORMAL-7);
                  if (r < 0)
                          return log_error_errno(r, "Failed to set priority of notify event source: %m");
-@@ -744,6 +746,79 @@ static int manager_setup_notify(Manager *m) {
+@@ -744,6 +746,79 @@ static int manager_setup_notify(Manager
          return 0;
  }
  
@@ -417,7 +427,7 @@ index b215583..d67ecb6 100644
          safe_close(m->time_change_fd);
          safe_close(m->kdbus_fd);
  
-@@ -1159,6 +1236,10 @@ int manager_startup(Manager *m, FILE *serialization, FDSet *fds) {
+@@ -1159,6 +1236,10 @@ int manager_startup(Manager *m, FILE *se
          if (q < 0 && r == 0)
                  r = q;
  
@@ -428,7 +438,7 @@ index b215583..d67ecb6 100644
          /* We might have deserialized the kdbus control fd, but if we
           * didn't, then let's create the bus now. */
          manager_setup_kdbus(m);
-@@ -1492,6 +1573,35 @@ static unsigned manager_dispatch_dbus_queue(Manager *m) {
+@@ -1492,6 +1573,35 @@ static unsigned manager_dispatch_dbus_qu
          return n;
  }
  
@@ -464,7 +474,7 @@ index b215583..d67ecb6 100644
  static void manager_invoke_notify_message(Manager *m, Unit *u, pid_t pid, const char *buf, FDSet *fds) {
          _cleanup_strv_free_ char **tags = NULL;
  
-@@ -2282,6 +2392,16 @@ int manager_serialize(Manager *m, FILE *f, FDSet *fds, bool switching_root) {
+@@ -2282,6 +2392,16 @@ int manager_serialize(Manager *m, FILE *
                  fprintf(f, "notify-socket=%s\n", m->notify_socket);
          }
  
@@ -481,7 +491,7 @@ index b215583..d67ecb6 100644
          if (m->kdbus_fd >= 0) {
                  int copy;
  
-@@ -2449,6 +2569,17 @@ int manager_deserialize(Manager *m, FILE *f, FDSet *fds) {
+@@ -2447,6 +2567,17 @@ int manager_deserialize(Manager *m, FILE
                          free(m->notify_socket);
                          m->notify_socket = n;
  
@@ -499,7 +509,7 @@ index b215583..d67ecb6 100644
                  } else if (startswith(l, "kdbus-fd=")) {
                          int fd;
  
-@@ -2573,6 +2704,10 @@ int manager_reload(Manager *m) {
+@@ -2565,6 +2696,10 @@ int manager_reload(Manager *m) {
          if (q < 0 && r >= 0)
                  r = q;
  
@@ -510,10 +520,10 @@ index b215583..d67ecb6 100644
          /* Third, fire things up! */
          manager_coldplug(m);
  
-diff --git a/src/core/manager.h b/src/core/manager.h
-index 9803f73..2d520b8 100644
---- a/src/core/manager.h
-+++ b/src/core/manager.h
+Index: systemd-229/src/core/manager.h
+===================================================================
+--- systemd-229.orig/src/core/manager.h
++++ systemd-229/src/core/manager.h
 @@ -132,6 +132,9 @@ struct Manager {
          int notify_fd;
          sd_event_source *notify_event_source;
